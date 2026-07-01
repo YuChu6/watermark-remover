@@ -500,6 +500,9 @@ document.getElementById('newImageBtn').addEventListener('click', () => {
 });
 
 // ===== 视频解析 =====
+// Cloudflare Worker 地址 —— 部署后替换为你的地址
+const WORKER_URL = "https://watermark-parser.你的子域名.workers.dev";
+
 document.getElementById("parseBtn").addEventListener("click", parseVideo);
 document.getElementById("videoUrl").addEventListener("keydown", (e) => {
     if (e.key === "Enter") parseVideo();
@@ -519,66 +522,52 @@ async function parseVideo() {
     }
 
     showLoading("正在解析视频链接...");
+    let videoUrl = null, title = "";
 
-    // Priority 1: Our own Vercel API (most reliable)
-    let apiUrl = "/api/parse?url=" + encodeURIComponent(url);
-    let data = await tryFetch(apiUrl);
+    // Priority 1: Cloudflare Worker
+    if (!WORKER_URL.includes("你的子域名")) {
+        const data = await tryFetch(WORKER_URL + "?url=" + encodeURIComponent(url));
+        if (data && data.success && data.video_url) {
+            videoUrl = data.video_url;
+            title = data.title || "";
+        }
+    }
 
-    // Priority 2: Direct third-party APIs with CORS proxy fallback
-    if (!data) {
-        loadingText.textContent = "正在尝试备用接口...";
-        const thirdParty = [
+    // Priority 2: Third-party APIs
+    if (!videoUrl) {
+        loadingText.textContent = "Worker 未配置，尝试备用接口...";
+        const tps = [
             "https://tenapi.cn/v2/video/" + platform + "?url=" + encodeURIComponent(url),
             "https://api.oioweb.cn/api/video/" + platform + "?url=" + encodeURIComponent(url),
         ];
-        const proxies = [
-            "https://api.allorigins.win/raw?url=",
-            "https://api.codetabs.com/v1/proxy?quest=",
-        ];
-        for (const tp of thirdParty) {
-            data = await tryFetch(tp);
+        for (const tp of tps) {
+            let data = await tryFetch(tp);
             if (!data) {
+                const proxies = ["https://api.allorigins.win/raw?url=", "https://api.codetabs.com/v1/proxy?quest="];
                 for (const proxy of proxies) {
                     data = await tryFetch(proxy + encodeURIComponent(tp));
-                    if (data) {
-                        if (proxy.includes("allorigins") && typeof data === "string") {
-                            try { data = JSON.parse(data); } catch(e) { data = null; continue; }
-                        }
-                        break;
-                    }
+                    if (data) { if (proxy.includes("allorigins") && typeof data === "string") { try { data = JSON.parse(data); } catch(e) { data = null; continue; } } break; }
                 }
             }
-            if (data) break;
+            if (data) {
+                videoUrl = data?.data?.video_url || data?.result?.url;
+                title = data?.data?.title || data?.result?.title || "";
+                if (videoUrl) break;
+            }
         }
     }
 
     hideLoading();
 
-    if (data) {
-        let videoUrl = null, title = "";
-        // Our own API response format
-        if (data.video_url) {
-            videoUrl = data.video_url;
-            title = data.title || "";
-        }
-        // tenapi.cn format
-        else if (data.data && data.data.video_url) {
-            videoUrl = data.data.video_url;
-            title = data.data.title || "";
-        }
-        // oioweb format
-        else if (data.result && data.result.url) {
-            videoUrl = data.result.url;
-            title = data.result.title || "";
-        }
-
-        if (videoUrl) {
-            showVideoResult(videoUrl, title);
-            return;
-        }
+    if (videoUrl) {
+        showVideoResult(videoUrl, title);
+    } else {
+        showVideoError(
+            "解析失败。请确认链接有效。<br><br>" +
+            "<b>提示：</b>为获得最佳体验，请部署 Cloudflare Worker（见说明），" +
+            "然后将 WORKER_URL 填入代码中。"
+        );
     }
-
-    showVideoError("解析失败。请确认链接有效后重试，或换个链接。");
 }
 
 function showVideoError(msg) {
@@ -594,9 +583,7 @@ async function tryFetch(url) {
         clearTimeout(timeout);
         if (!response.ok) return null;
         return await response.json();
-    } catch (err) {
-        return null;
-    }
+    } catch (err) { return null; }
 }
 
 function showVideoResult(videoUrl, title) {
@@ -605,8 +592,7 @@ function showVideoResult(videoUrl, title) {
     document.getElementById("videoInfo").innerHTML =
         "<p style='color:#16a34a;'>解析成功！</p>" +
         (title ? "<p>标题：" + title + "</p>" : "") +
-        "<p style='font-size:12px;color:#64748b;'>如无法在线播放，点击下载按钮保存到本地</p>";
-
+        "<p style='font-size:12px;color:#64748b;'>如无法播放，点下载保存到本地</p>";
     document.getElementById("videoDownloadBtn").onclick = () => {
         const a = document.createElement("a");
         a.href = videoUrl;
@@ -617,10 +603,8 @@ function showVideoResult(videoUrl, title) {
 }
 
 document.getElementById("videoDownloadBtn").addEventListener("click", () => {
-    const videoUrl = document.getElementById("videoPlayer").src;
-    if (videoUrl) {
-        window.open(videoUrl, "_blank");
-    }
+    const v = document.getElementById("videoPlayer").src;
+    if (v) window.open(v, "_blank");
 });
 
 
