@@ -534,14 +534,14 @@ async function parseVideo() {
     else if (url.includes("xhslink.com") || url.includes("xiaohongshu.com")) platform = "xiaohongshu";
     else {
         document.getElementById("videoResult").style.display = "block";
-        document.getElementById("videoInfo").innerHTML = "<p style="color:#b45309;">暂不支持该平台。目前支持：抖音、快手、小红书。</p>";
+        document.getElementById("videoInfo").innerHTML = "<p style='color:#b45309;'>暂不支持该平台。目前支持：抖音、快手、小红书。</p>";
         return;
     }
 
     const apis = VIDEO_APIS[platform];
     if (!apis || apis.length === 0) {
         document.getElementById("videoResult").style.display = "block";
-        document.getElementById("videoInfo").innerHTML = "<p style="color:#b45309;">该平台暂无可用解析接口。</p>";
+        document.getElementById("videoInfo").innerHTML = "<p style='color:#b45309;'>该平台暂无可用解析接口。</p>";
         return;
     }
 
@@ -575,8 +575,8 @@ async function parseVideo() {
     hideLoading();
     document.getElementById("videoResult").style.display = "block";
     document.getElementById("videoInfo").innerHTML =
-        "<p style="color:#b45309;">所有解析接口均未响应</p>" +
-        "<p style="font-size:13px;color:#64748b;">可能原因：链接已过期 / 接口维护中 / 网络限制。<br>请重新复制链接后再试，或稍后重试。</p>";
+        "<p style='color:#b45309;'>所有解析接口均未响应</p>" +
+        "<p style='font-size:13px;color:#64748b;'>可能原因：链接已过期 / 接口维护中 / 网络限制。<br>请重新复制链接后再试，或稍后重试。</p>";
 }
 
 async function tryFetch(url) {
@@ -608,7 +608,7 @@ function showVideoResult(videoUrl, data) {
     document.getElementById("videoInfo").innerHTML =
         "<p>解析成功！</p>" +
         (title ? "<p>标题：" + title + "</p>" : "") +
-        "<p style="font-size:12px;color:#64748b;">如无法播放，点下载按钮保存到本地</p>";
+        "<p style='font-size:12px;color:#64748b;'>如无法播放，点下载按钮保存到本地</p>";
 
     document.getElementById("videoDownloadBtn").onclick = () => {
         const a = document.createElement("a");
