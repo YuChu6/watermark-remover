@@ -1,0 +1,220 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>去水印工具 - 在线去除图片/视频水印</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="#" class="logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M8 12l2-2 4 4 2-2"/>
+                </svg>
+                <span>去水印工具</span>
+            </a>
+            <div class="nav-links">
+                <a href="#image" class="nav-link active" data-tab="image">图片去水印</a>
+                <a href="#video" class="nav-link" data-tab="video">视频去水印</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <main class="main">
+        <!-- 图片去水印 Tab -->
+        <section id="image" class="tab-content active">
+            <div class="hero">
+                <h1>图片去水印</h1>
+                <p>上传图片，框选水印区域，一键去除</p>
+            </div>
+
+            <div class="workspace">
+                <!-- 上传区 -->
+                <div class="upload-zone" id="uploadZone">
+                    <div class="upload-icon">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <p class="upload-text">拖拽图片到此处，或 <span class="upload-link">点击上传</span></p>
+                    <p class="upload-hint">支持 JPG / PNG / WebP，最大 20MB</p>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+
+                <!-- 编辑区 -->
+                <div class="editor" id="editor" style="display:none;">
+                    <div class="editor-toolbar">
+                        <div class="tool-group">
+                            <button class="tool-btn active" data-mode="select" title="框选水印区域">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="4" y="4" width="16" height="16" rx="2"/>
+                                    <circle cx="9" cy="9" r="1" fill="currentColor"/>
+                                    <circle cx="15" cy="15" r="1" fill="currentColor"/>
+                                </svg>
+                                <span>框选</span>
+                            </button>
+                            <button class="tool-btn" data-mode="brush" title="涂抹水印区域">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                                    <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                                    <path d="M2 2l7.586 7.586"/>
+                                    <circle cx="11" cy="11" r="2"/>
+                                </svg>
+                                <span>涂抹</span>
+                            </button>
+                        </div>
+                        <div class="tool-group">
+                            <label class="tool-label">去除方式</label>
+                            <select id="removeMethod" class="method-select">
+                                <option value="inpaint">智能填充</option>
+                                <option value="blur">高斯模糊</option>
+                                <option value="crop">裁剪去除</option>
+                                <option value="solid">纯色覆盖</option>
+                            </select>
+                        </div>
+                        <div class="tool-group">
+                            <button class="tool-btn" id="brushSizeSmall" data-size="10" title="小画笔">
+                                <svg width="14" height="14" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>
+                            </button>
+                            <button class="tool-btn active" id="brushSizeMed" data-size="25" title="中画笔">
+                                <svg width="18" height="18" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="currentColor"/></svg>
+                            </button>
+                            <button class="tool-btn" id="brushSizeLarge" data-size="45" title="大画笔">
+                                <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>
+                            </button>
+                        </div>
+                        <div class="tool-group actions">
+                            <button class="tool-btn" id="clearMask" title="清除选区">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="3 6 5 6 21 6"/>
+                                    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                                </svg>
+                                <span>清除</span>
+                            </button>
+                            <button class="tool-btn" id="undoMask" title="撤销">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="1 4 1 10 7 10"/>
+                                    <path d="M3.51 15a9 9 0 102.13-9.36L1 10"/>
+                                </svg>
+                            </button>
+                            <button class="btn-primary" id="processBtn">开始去除</button>
+                        </div>
+                    </div>
+                    <div class="canvas-container">
+                        <canvas id="mainCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- 结果区 -->
+                <div class="result" id="result" style="display:none;">
+                    <h3>处理完成</h3>
+                    <div class="result-compare">
+                        <div class="result-item">
+                            <p class="result-label">原图</p>
+                            <img id="originalPreview" alt="原图">
+                        </div>
+                        <div class="result-arrow">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                                <polyline points="12 5 19 12 12 19"/>
+                            </svg>
+                        </div>
+                        <div class="result-item">
+                            <p class="result-label">去水印后</p>
+                            <img id="resultPreview" alt="结果">
+                        </div>
+                    </div>
+                    <div class="result-actions">
+                        <button class="btn-primary" id="downloadBtn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            下载结果
+                        </button>
+                        <button class="btn-secondary" id="reEditBtn">继续编辑</button>
+                        <button class="btn-secondary" id="newImageBtn">处理新图片</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 视频去水印 Tab -->
+        <section id="video" class="tab-content">
+            <div class="hero">
+                <h1>视频去水印</h1>
+                <p>粘贴短视频分享链接，解析无水印视频地址</p>
+            </div>
+
+            <div class="workspace">
+                <div class="video-tool">
+                    <div class="input-group">
+                        <input type="text" id="videoUrl" class="url-input" placeholder="粘贴抖音/快手/小红书等短视频分享链接...">
+                        <button class="btn-primary" id="parseBtn">解析视频</button>
+                    </div>
+
+                    <div class="platform-tags">
+                        <span>支持平台：</span>
+                        <span class="tag">抖音</span>
+                        <span class="tag">快手</span>
+                        <span class="tag">小红书</span>
+                        <span class="tag">微视</span>
+                        <span class="tag">皮皮虾</span>
+                        <span class="tag">西瓜视频</span>
+                    </div>
+
+                    <div class="video-result" id="videoResult" style="display:none;">
+                        <div class="video-preview">
+                            <video id="videoPlayer" controls></video>
+                        </div>
+                        <div class="video-info" id="videoInfo"></div>
+                        <div class="result-actions">
+                            <button class="btn-primary" id="videoDownloadBtn">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="7 10 12 15 17 10"/>
+                                    <line x1="12" y1="15" x2="12" y2="3"/>
+                                </svg>
+                                下载无水印视频
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="video-tips">
+                        <h4>使用说明</h4>
+                        <ol>
+                            <li>打开抖音/快手等 App，找到想要下载的视频</li>
+                            <li>点击分享按钮，选择「复制链接」</li>
+                            <li>将链接粘贴到上方输入框</li>
+                            <li>点击「解析视频」获取无水印版本</li>
+                            <li>预览确认后点击下载即可保存到本地</li>
+                        </ol>
+                        <p class="note">⚠️ 视频解析需要后端服务支持。静态托管模式下，将使用免费 API 进行解析。如有问题请稍后重试。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <p>去水印工具 &copy; 2026 - 免费在线使用</p>
+    </footer>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay" style="display:none;">
+        <div class="spinner"></div>
+        <p id="loadingText">处理中...</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
