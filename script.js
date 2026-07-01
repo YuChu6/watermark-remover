@@ -499,65 +499,137 @@ document.getElementById('newImageBtn').addEventListener('click', () => {
     maskHistory = [];
 });
 
-// ===== 视频去水印 =====
-document.getElementById('parseBtn').addEventListener('click', parseVideo);
-document.getElementById('videoUrl').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') parseVideo();
+// ===== VIDEO PARSING =====
+document.getElementById("parseBtn").addEventListener("click", parseVideo);
+document.getElementById("videoUrl").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") parseVideo();
 });
 
+const CORS_PROXIES = [
+    "https://api.allorigins.win/raw?url=",
+    "https://corsproxy.io/?",
+    "https://api.codetabs.com/v1/proxy?quest=",
+];
+
+const VIDEO_APIS = {
+    douyin: [
+        { url: "https://tenapi.cn/v2/video/douyin?url=", field: "data.video_url" },
+        { url: "https://api.oioweb.cn/api/video/douyin?url=", field: "result.url" },
+    ],
+    kuaishou: [
+        { url: "https://tenapi.cn/v2/video/kuaishou?url=", field: "data.video_url" },
+    ],
+    xiaohongshu: [
+        { url: "https://api.oioweb.cn/api/video/xiaohongshu?url=", field: "result.url" },
+    ],
+};
+
 async function parseVideo() {
-    const url = document.getElementById('videoUrl').value.trim();
-    if (!url) { alert('请先粘贴视频分享链接'); return; }
+    const url = document.getElementById("videoUrl").value.trim();
+    if (!url) { alert("请先粘贴视频分享链接"); return; }
 
-    showLoading('正在解析视频链接...');
+    let platform = null;
+    if (url.includes("douyin.com") || url.includes("iesdouyin.com")) platform = "douyin";
+    else if (url.includes("kuaishou.com")) platform = "kuaishou";
+    else if (url.includes("xhslink.com") || url.includes("xiaohongshu.com")) platform = "xiaohongshu";
+    else {
+        document.getElementById("videoResult").style.display = "block";
+        document.getElementById("videoInfo").innerHTML = "<p style="color:#b45309;">暂不支持该平台。目前支持：抖音、快手、小红书。</p>";
+        return;
+    }
 
+    const apis = VIDEO_APIS[platform];
+    if (!apis || apis.length === 0) {
+        document.getElementById("videoResult").style.display = "block";
+        document.getElementById("videoInfo").innerHTML = "<p style="color:#b45309;">该平台暂无可用解析接口。</p>";
+        return;
+    }
+
+    showLoading("正在解析视频链接（尝试多个接口）...");
+
+    for (const api of apis) {
+        const apiUrl = api.url + encodeURIComponent(url);
+        let data = await tryFetch(apiUrl);
+        if (!data) {
+            for (const proxy of CORS_PROXIES) {
+                loadingText.textContent = "正在通过代理解析...";
+                data = await tryFetch(proxy + encodeURIComponent(apiUrl));
+                if (data) {
+                    if (proxy.includes("allorigins") && typeof data === "string") {
+                        try { data = JSON.parse(data); } catch(e) { data = null; continue; }
+                    }
+                    break;
+                }
+            }
+        }
+        if (data) {
+            const videoUrl = getNestedValue(data, api.field);
+            if (videoUrl) {
+                hideLoading();
+                showVideoResult(videoUrl, data);
+                return;
+            }
+        }
+    }
+
+    hideLoading();
+    document.getElementById("videoResult").style.display = "block";
+    document.getElementById("videoInfo").innerHTML =
+        "<p style="color:#b45309;">所有解析接口均未响应</p>" +
+        "<p style="font-size:13px;color:#64748b;">可能原因：链接已过期 / 接口维护中 / 网络限制。<br>请重新复制链接后再试，或稍后重试。</p>";
+}
+
+async function tryFetch(url) {
     try {
-        // 尝试使用免费的去水印 API
-        let apiUrl = '';
-        if (url.includes('douyin.com') || url.includes('iesdouyin.com')) {
-            apiUrl = 'https://api.pearktrue.cn/api/video/douyin/?url=' + encodeURIComponent(url);
-        } else if (url.includes('kuaishou.com')) {
-            apiUrl = 'https://api.pearktrue.cn/api/video/kuaishou/?url=' + encodeURIComponent(url);
-        } else if (url.includes('xhslink.com') || url.includes('xiaohongshu.com')) {
-            apiUrl = 'https://api.pearktrue.cn/api/video/xiaohongshu/?url=' + encodeURIComponent(url);
-        } else {
-            hideLoading();
-            document.getElementById('videoResult').style.display = 'block';
-            document.getElementById('videoInfo').innerHTML = '<p style="color:#b45309;">暂不支持该平台的链接，请尝试抖音/快手/小红书的分享链接。</p>';
-            return;
-        }
-
-        const response = await fetch(apiUrl);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!response.ok) return null;
         const data = await response.json();
-
-        hideLoading();
-
-        if (data.code === 200 && data.data) {
-            const videoUrl = data.data.video_url || data.data.url || data.data.video;
-            document.getElementById('videoResult').style.display = 'block';
-            document.getElementById('videoPlayer').src = videoUrl;
-            document.getElementById('videoInfo').innerHTML = `
-                <p>✅ 解析成功！</p>
-                ${data.data.title ? '<p>标题：' + data.data.title + '</p>' : ''}
-            `;
-            document.getElementById('videoDownloadBtn').onclick = () => {
-                window.open(videoUrl, '_blank');
-            };
-        } else {
-            document.getElementById('videoResult').style.display = 'block';
-            document.getElementById('videoInfo').innerHTML = '<p style="color:#b45309;">解析失败，请检查链接是否正确或稍后重试。提示：请确保复制的是完整的分享链接。</p>';
-        }
+        return data;
     } catch (err) {
-        hideLoading();
-        document.getElementById('videoResult').style.display = 'block';
-        document.getElementById('videoInfo').innerHTML = '<p style="color:#b45309;">网络请求失败，请检查网络连接或稍后重试。</p>';
+        return null;
     }
 }
 
-document.getElementById('videoDownloadBtn').addEventListener('click', () => {
-    const videoUrl = document.getElementById('videoPlayer').src;
-    if (videoUrl) window.open(videoUrl, '_blank');
+function getNestedValue(obj, path) {
+    return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : null), obj);
+}
+
+function showVideoResult(videoUrl, data) {
+    document.getElementById("videoResult").style.display = "block";
+    document.getElementById("videoPlayer").src = videoUrl;
+
+    let title = "";
+    if (data.data && data.data.title) title = data.data.title;
+    else if (data.result && data.result.title) title = data.result.title;
+
+    document.getElementById("videoInfo").innerHTML =
+        "<p>解析成功！</p>" +
+        (title ? "<p>标题：" + title + "</p>" : "") +
+        "<p style="font-size:12px;color:#64748b;">如无法播放，点下载按钮保存到本地</p>";
+
+    document.getElementById("videoDownloadBtn").onclick = () => {
+        const a = document.createElement("a");
+        a.href = videoUrl;
+        a.download = "video.mp4";
+        a.target = "_blank";
+        a.click();
+    };
+}
+
+document.getElementById("videoDownloadBtn").addEventListener("click", () => {
+    const videoUrl = document.getElementById("videoPlayer").src;
+    if (videoUrl) {
+        const a = document.createElement("a");
+        a.href = videoUrl;
+        a.download = "video.mp4";
+        a.target = "_blank";
+        a.click();
+    }
 });
+
 
 // ===== 辅助函数 =====
 function showLoading(text) {
