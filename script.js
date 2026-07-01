@@ -499,30 +499,11 @@ document.getElementById('newImageBtn').addEventListener('click', () => {
     maskHistory = [];
 });
 
-// ===== VIDEO PARSING =====
+// ===== 视频解析 =====
 document.getElementById("parseBtn").addEventListener("click", parseVideo);
 document.getElementById("videoUrl").addEventListener("keydown", (e) => {
     if (e.key === "Enter") parseVideo();
 });
-
-const CORS_PROXIES = [
-    "https://api.allorigins.win/raw?url=",
-    "https://corsproxy.io/?",
-    "https://api.codetabs.com/v1/proxy?quest=",
-];
-
-const VIDEO_APIS = {
-    douyin: [
-        { url: "https://tenapi.cn/v2/video/douyin?url=", field: "data.video_url" },
-        { url: "https://api.oioweb.cn/api/video/douyin?url=", field: "result.url" },
-    ],
-    kuaishou: [
-        { url: "https://tenapi.cn/v2/video/kuaishou?url=", field: "data.video_url" },
-    ],
-    xiaohongshu: [
-        { url: "https://api.oioweb.cn/api/video/xiaohongshu?url=", field: "result.url" },
-    ],
-};
 
 async function parseVideo() {
     const url = document.getElementById("videoUrl").value.trim();
@@ -533,82 +514,98 @@ async function parseVideo() {
     else if (url.includes("kuaishou.com")) platform = "kuaishou";
     else if (url.includes("xhslink.com") || url.includes("xiaohongshu.com")) platform = "xiaohongshu";
     else {
-        document.getElementById("videoResult").style.display = "block";
-        document.getElementById("videoInfo").innerHTML = "<p style='color:#b45309;'>暂不支持该平台。目前支持：抖音、快手、小红书。</p>";
+        showVideoError("暂不支持该平台。目前支持：抖音、快手、小红书。");
         return;
     }
 
-    const apis = VIDEO_APIS[platform];
-    if (!apis || apis.length === 0) {
-        document.getElementById("videoResult").style.display = "block";
-        document.getElementById("videoInfo").innerHTML = "<p style='color:#b45309;'>该平台暂无可用解析接口。</p>";
-        return;
-    }
+    showLoading("正在解析视频链接...");
 
-    showLoading("正在解析视频链接（尝试多个接口）...");
+    // Priority 1: Our own Vercel API (most reliable)
+    let apiUrl = "/api/parse?url=" + encodeURIComponent(url);
+    let data = await tryFetch(apiUrl);
 
-    for (const api of apis) {
-        const apiUrl = api.url + encodeURIComponent(url);
-        let data = await tryFetch(apiUrl);
-        if (!data) {
-            for (const proxy of CORS_PROXIES) {
-                loadingText.textContent = "正在通过代理解析...";
-                data = await tryFetch(proxy + encodeURIComponent(apiUrl));
-                if (data) {
-                    if (proxy.includes("allorigins") && typeof data === "string") {
-                        try { data = JSON.parse(data); } catch(e) { data = null; continue; }
+    // Priority 2: Direct third-party APIs with CORS proxy fallback
+    if (!data) {
+        loadingText.textContent = "正在尝试备用接口...";
+        const thirdParty = [
+            "https://tenapi.cn/v2/video/" + platform + "?url=" + encodeURIComponent(url),
+            "https://api.oioweb.cn/api/video/" + platform + "?url=" + encodeURIComponent(url),
+        ];
+        const proxies = [
+            "https://api.allorigins.win/raw?url=",
+            "https://api.codetabs.com/v1/proxy?quest=",
+        ];
+        for (const tp of thirdParty) {
+            data = await tryFetch(tp);
+            if (!data) {
+                for (const proxy of proxies) {
+                    data = await tryFetch(proxy + encodeURIComponent(tp));
+                    if (data) {
+                        if (proxy.includes("allorigins") && typeof data === "string") {
+                            try { data = JSON.parse(data); } catch(e) { data = null; continue; }
+                        }
+                        break;
                     }
-                    break;
                 }
             }
-        }
-        if (data) {
-            const videoUrl = getNestedValue(data, api.field);
-            if (videoUrl) {
-                hideLoading();
-                showVideoResult(videoUrl, data);
-                return;
-            }
+            if (data) break;
         }
     }
 
     hideLoading();
+
+    if (data) {
+        let videoUrl = null, title = "";
+        // Our own API response format
+        if (data.video_url) {
+            videoUrl = data.video_url;
+            title = data.title || "";
+        }
+        // tenapi.cn format
+        else if (data.data && data.data.video_url) {
+            videoUrl = data.data.video_url;
+            title = data.data.title || "";
+        }
+        // oioweb format
+        else if (data.result && data.result.url) {
+            videoUrl = data.result.url;
+            title = data.result.title || "";
+        }
+
+        if (videoUrl) {
+            showVideoResult(videoUrl, title);
+            return;
+        }
+    }
+
+    showVideoError("解析失败。请确认链接有效后重试，或换个链接。");
+}
+
+function showVideoError(msg) {
     document.getElementById("videoResult").style.display = "block";
-    document.getElementById("videoInfo").innerHTML =
-        "<p style='color:#b45309;'>所有解析接口均未响应</p>" +
-        "<p style='font-size:13px;color:#64748b;'>可能原因：链接已过期 / 接口维护中 / 网络限制。<br>请重新复制链接后再试，或稍后重试。</p>";
+    document.getElementById("videoInfo").innerHTML = "<p style='color:#b45309;'>" + msg + "</p>";
 }
 
 async function tryFetch(url) {
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 12000);
+        const timeout = setTimeout(() => controller.abort(), 15000);
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeout);
         if (!response.ok) return null;
-        const data = await response.json();
-        return data;
+        return await response.json();
     } catch (err) {
         return null;
     }
 }
 
-function getNestedValue(obj, path) {
-    return path.split(".").reduce((o, k) => (o && o[k] !== undefined ? o[k] : null), obj);
-}
-
-function showVideoResult(videoUrl, data) {
+function showVideoResult(videoUrl, title) {
     document.getElementById("videoResult").style.display = "block";
     document.getElementById("videoPlayer").src = videoUrl;
-
-    let title = "";
-    if (data.data && data.data.title) title = data.data.title;
-    else if (data.result && data.result.title) title = data.result.title;
-
     document.getElementById("videoInfo").innerHTML =
-        "<p>解析成功！</p>" +
+        "<p style='color:#16a34a;'>解析成功！</p>" +
         (title ? "<p>标题：" + title + "</p>" : "") +
-        "<p style='font-size:12px;color:#64748b;'>如无法播放，点下载按钮保存到本地</p>";
+        "<p style='font-size:12px;color:#64748b;'>如无法在线播放，点击下载按钮保存到本地</p>";
 
     document.getElementById("videoDownloadBtn").onclick = () => {
         const a = document.createElement("a");
@@ -622,11 +619,7 @@ function showVideoResult(videoUrl, data) {
 document.getElementById("videoDownloadBtn").addEventListener("click", () => {
     const videoUrl = document.getElementById("videoPlayer").src;
     if (videoUrl) {
-        const a = document.createElement("a");
-        a.href = videoUrl;
-        a.download = "video.mp4";
-        a.target = "_blank";
-        a.click();
+        window.open(videoUrl, "_blank");
     }
 });
 
